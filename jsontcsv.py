@@ -1,25 +1,75 @@
 import json
 import csv
 
-# Archivo JSON de entrada
-input_json = 'archivo.json'
+# Archivos
+input_file = 'Colombia-MICROSERVICES.json'
+output_file = 'output_microservices_full.csv'
 
-# Archivo CSV de salida
-output_csv = 'archivo.csv'
+# Cargar JSON
+with open(input_file, 'r', encoding='utf-8') as f:
+    data = json.load(f)
 
-# Cargar datos del archivo JSON
-with open(input_json, 'r', encoding='utf-8') as json_file:
-    data = json.load(json_file)
+# Definir columnas del CSV
+fieldnames = [
+    'projectName', 'repositoryUrl', 'buildConfigurationMode', 'tokenOcp',
+    'appName', 'country', 'ocplabel', 'baseImageVersion',
+    'projectInternal', 'configMapName', 'volumePath',
+    'environment', 'cpuLimits', 'cpuRequest', 'memoryLimits', 'memoryRequest', 'replicas'
+]
 
-# Asumiendo que el JSON es una lista de diccionarios
-if isinstance(data, list) and len(data) > 0:
-    keys = data[0].keys()
+rows = []
 
-    with open(output_csv, 'w', newline='', encoding='utf-8') as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=keys)
-        writer.writeheader()
-        writer.writerows(data)
+# Procesar cada proyecto
+for project in data.get('project', []):
+    project_name = project.get('name', '')
+    for ms in project.get('ms', []):
+        config = ms.get('config', {})
 
-    print(f"Archivo CSV '{output_csv}' creado exitosamente.")
-else:
-    print("El JSON debe ser una lista de diccionarios.")
+        # General fields
+        row_common = {
+            'projectName': project_name,
+            'repositoryUrl': ms.get('repositoryUrl', ''),
+            'buildConfigurationMode': ms.get('buildConfigurationMode', ''),
+            'tokenOcp': ms.get('tokenOcp', ''),
+            'appName': config.get('appName', ''),
+            'country': config.get('country', ''),
+            'ocplabel': config.get('ocplabel', ''),
+            'baseImageVersion': config.get('baseImageVersion', ''),
+            'projectInternal': config.get('project', ''),
+            'configMapName': ''
+        }
+
+        # ConfigMap (extrae el primer configMapName si existe)
+        config_map_list = config.get('configMaps', [])
+        if config_map_list and isinstance(config_map_list[0], dict):
+            row_common['configMapName'] = config_map_list[0].get('configMapName', '')
+
+        # Volumes (extrae el primer path si existe)
+        volume_list = config.get('volumes', [])
+        if volume_list and isinstance(volume_list[0], dict):
+            row_common['volumePath'] = volume_list[0].get('Path', '')
+
+        # Obtener cuotas
+        quotas = {
+            'dev': config.get('resQuotasdev', {}),
+            'qa': config.get('resQuotasqa', config.get('resQuotasdev', {})),
+            'master': config.get('resQuotasmaster', config.get('resQuotasdev', {}))
+        }
+
+        for env, quota in quotas.items():
+            row = row_common.copy()
+            row['environment'] = env
+            row['cpuLimits'] = quota.get('cpuLimits', '')
+            row['cpuRequest'] = quota.get('cpuRequest', '')
+            row['memoryLimits'] = quota.get('memoryLimits', '')
+            row['memoryRequest'] = quota.get('memoryRequest', '')
+            row['replicas'] = quota.get('replicas', '')
+            rows.append(row)
+
+# Escribir CSV
+with open(output_file, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+
+print(f"CSV generado con éxito: {output_file}")
