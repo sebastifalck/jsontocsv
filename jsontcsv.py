@@ -5,11 +5,7 @@ import csv
 input_file = 'Colombia-MICROSERVICES.json'
 output_file = 'output_microservices_full.csv'
 
-# Cargar JSON
-with open(input_file, 'r', encoding='utf-8') as f:
-    data = json.load(f)
-
-# Columnas del CSV según el JSON proporcionado
+# Columnas del CSV
 fieldnames = [
     'projectName', 'repositoryUrl', 'buildConfigurationMode', 'tokenOcp',
     'appName', 'country', 'ocpLabel', 'projectInternal', 'baseImageVersion',
@@ -21,15 +17,21 @@ fieldnames = [
 
 rows = []
 
+# Cargar JSON
+with open(input_file, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
 # Procesar proyectos
 for project in data.get('project', []):
+    if not project or not isinstance(project, dict):
+        continue  # Ignorar si está vacío
+
     project_name = project.get('name', '')
     for ms in project.get('ms', []):
-        # Validar config
         config_raw = ms.get('config', {})
         config = config_raw if isinstance(config_raw, dict) else {}
 
-        # Extraer secretos
+        # Secretos
         secret_data = config.get('secrets', [{}])[0] if config.get('secrets') else {}
         secret = secret_data.get('secret', '')
         secret_name = secret_data.get('secretName', '')
@@ -63,7 +65,7 @@ for project in data.get('project', []):
             'mountPath': mount_path
         }
 
-        # Cuotas por entorno
+        # Cuotas
         quotas = {
             'dev': config.get('resQuotasdev', {}),
             'qa': config.get('resQuotasqa', config.get('resQuotasdev', {})),
@@ -71,7 +73,7 @@ for project in data.get('project', []):
         }
 
         for env, q in quotas.items():
-            q = q if isinstance(q, dict) else {}  # Protección contra errores
+            q = q if isinstance(q, dict) else {}
             row = row_common.copy()
             row['environment'] = env
             row['cpuLimits'] = q.get('cpuLimits', '')
@@ -79,12 +81,16 @@ for project in data.get('project', []):
             row['memoryLimits'] = q.get('memoryLimits', '')
             row['memoryRequest'] = q.get('memoryRequest', '')
             row['replicas'] = q.get('replicas', '')
+
+            # Depuración: imprime cada fila construida
+            print(json.dumps(row, indent=2, ensure_ascii=False))
+
             rows.append(row)
 
-# Escribir CSV
+# Escribir a CSV
 with open(output_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(rows)
 
-print(f"✅ CSV generado correctamente: {output_file}")
+print(f"\n✅ CSV generado correctamente: {output_file}")
