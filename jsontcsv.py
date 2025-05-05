@@ -71,9 +71,20 @@ for project in data.get('project', []):
         }
 
         for env, q in quotas.items():
+            q = q if isinstance(q, dict) else {}  # Protección contra errores
             row = row_common.copy()
             row['environment'] = env
             row['cpuLimits'] = q.get('cpuLimits', '')
             row['cpuRequest'] = q.get('cpuRequest', '')
             row['memoryLimits'] = q.get('memoryLimits', '')
-            row['memoryRequest'] = q.get('memoryRequest
+            row['memoryRequest'] = q.get('memoryRequest', '')
+            row['replicas'] = q.get('replicas', '')
+            rows.append(row)
+
+# Escribir CSV
+with open(output_file, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+
+print(f"✅ CSV generado correctamente: {output_file}")
