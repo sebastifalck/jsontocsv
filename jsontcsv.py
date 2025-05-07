@@ -5,7 +5,7 @@ import csv
 with open("proyectos.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Campos para el CSV
+# Definir columnas del CSV
 fieldnames = [
     "project_name",
     "app_name",
@@ -34,8 +34,8 @@ fieldnames = [
     "memory_limits_qa", "memory_request_qa", "replicas_qa"
 ]
 
-# Crear el archivo CSV
-with open("microservicios_completo.csv", "w", newline="", encoding="utf-8") as csvfile:
+# Escribir el archivo CSV
+with open("microservicios_convertido.csv", "w", newline="", encoding="utf-8") as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
 
@@ -43,7 +43,11 @@ with open("microservicios_completo.csv", "w", newline="", encoding="utf-8") as c
         project_name = project.get("name", "")
 
         for ms in project.get("ms", []):
-            config = ms.get("config", {})
+            # Decodificar config si es un string JSON embebido
+            config_raw = ms.get("config", "{}")
+            config = json.loads(config_raw) if isinstance(config_raw, str) else config
+
+            # Usar resQuotasdev como fallback para master y qa si no existen
             dev = config.get("resQuotasdev", {})
             master = config.get("resQuotasmaster", dev)
             qa = config.get("resQuotasqa", dev)
