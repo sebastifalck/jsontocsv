@@ -1,94 +1,59 @@
 import json
 import csv
 
-# Cargar el archivo JSON
-with open("proyectos.json", "r", encoding="utf-8") as f:
+# Leer archivo JSON desde disco
+with open('proyectos.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
-# Definir columnas del CSV
-fieldnames = [
-    "project_name",
-    "app_name",
-    "country",
-    "ocp_label",
-    "project_folder",
-    "base_image_version",
-    "repository_url",
-    "token_ocp",
-    "build_configuration_mode",
+# Lista para almacenar filas del CSV
+rows = []
 
-    "secrets",
-    "config_maps",
-    "volumes",
+# Procesar cada proyecto y microservicio
+for project in data['project']:
+    project_name = project['name']
+    for ms in project['ms']:
+        config = json.loads(ms['config'])  # Deserializar el string JSON de "config"
+        row = {
+            'project_name': project_name,
+            'repositoryUrl': ms['repositoryUrl'],
+            'buildConfigurationMode': ms['buildConfigurationMode'],
+            'tokenOcp': ms['tokenOcp'],
+            'appName': config.get('appName'),
+            'country': config.get('country'),
+            'ocpLabel': config.get('ocpLabel'),
+            'project': config.get('project'),
+            'baseImageVersion': config.get('baseImageVersion'),
+            'secrets': ', '.join([s.get('secretName', '') for s in config.get('secrets', [])]),
+            'configMaps': ', '.join([c.get('configMapName', '') for c in config.get('configMaps', [])]),
+            'volumes': ', '.join([v.get('mountPath', '') for v in config.get('volumes', [])]),
+        }
 
-    # Recursos MASTER
-    "cpu_limits_master", "cpu_request_master",
-    "memory_limits_master", "memory_request_master", "replicas_master",
+        # Lógica para normalizar los entornos
+        quotas = {
+            'resQuotasdev': config.get('resQuotasdev'),
+            'resQuotasmaster': config.get('resQuotasmaster'),
+            'resQuotasqa': config.get('resQuotasqa')
+        }
 
-    # Recursos DEV
-    "cpu_limits_dev", "cpu_request_dev",
-    "memory_limits_dev", "memory_request_dev", "replicas_dev",
+        # Si solo tiene resQuotasdev, replicar para master y qa
+        if quotas['resQuotasdev'] and not quotas['resQuotasmaster'] and not quotas['resQuotasqa']:
+            quotas['resQuotasmaster'] = quotas['resQuotasdev']
+            quotas['resQuotasqa'] = quotas['resQuotasdev']
 
-    # Recursos QA
-    "cpu_limits_qa", "cpu_request_qa",
-    "memory_limits_qa", "memory_request_qa", "replicas_qa"
-]
+        for env, env_data in quotas.items():
+            if env_data:
+                for key in ['cpuLimits', 'cpuRequest', 'memoryLimits', 'memoryRequest', 'replicas']:
+                    row[f'{env}_{key}'] = env_data[0].get(key)
 
-# Escribir el archivo CSV
-with open("microservicios_convertido.csv", "w", newline="", encoding="utf-8") as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        rows.append(row)
+
+# Obtener encabezados unificados
+headers = sorted(set().union(*(r.keys() for r in rows)))
+
+# Escribir archivo CSV
+with open('microservices_config.csv', 'w', newline='', encoding='utf-8') as f:
+    writer = csv.DictWriter(f, fieldnames=headers)
     writer.writeheader()
+    writer.writerows(rows)
 
-    for project in data.get("project", []):
-        project_name = project.get("name", "")
-
-        for ms in project.get("ms", []):
-            # Decodificar config si es un string JSON embebido
-            config_raw = ms.get("config", "{}")
-            config = json.loads(config_raw) if isinstance(config_raw, str) else config
-
-            # Usar resQuotasdev como fallback para master y qa si no existen
-            dev = config.get("resQuotasdev", {})
-            master = config.get("resQuotasmaster", dev)
-            qa = config.get("resQuotasqa", dev)
-
-            secrets = ";".join([s.get("secretName") for s in config.get("secrets", []) if s.get("secret")])
-            config_maps = ";".join([cm.get("configMapName") for cm in config.get("configMaps", []) if cm.get("configMap")])
-            volumes = ";".join([v.get("mountPath") for v in config.get("volumes", []) if v.get("volume")])
-
-            writer.writerow({
-                "project_name": project_name,
-                "app_name": config.get("appName", ""),
-                "country": config.get("country", ""),
-                "ocp_label": config.get("ocpLabel", ""),
-                "project_folder": config.get("project", ""),
-                "base_image_version": config.get("baseImageVersion", ""),
-                "repository_url": ms.get("repositoryUrl", ""),
-                "token_ocp": ms.get("tokenOcp", ""),
-                "build_configuration_mode": ms.get("buildConfigurationMode", ""),
-
-                "secrets": secrets,
-                "config_maps": config_maps,
-                "volumes": volumes,
-
-                # MASTER
-                "cpu_limits_master": master.get("cpuLimits", ""),
-                "cpu_request_master": master.get("cpuRequest", ""),
-                "memory_limits_master": master.get("memoryLimits", ""),
-                "memory_request_master": master.get("memoryRequest", ""),
-                "replicas_master": master.get("replicas", ""),
-
-                # DEV
-                "cpu_limits_dev": dev.get("cpuLimits", ""),
-                "cpu_request_dev": dev.get("cpuRequest", ""),
-                "memory_limits_dev": dev.get("memoryLimits", ""),
-                "memory_request_dev": dev.get("memoryRequest", ""),
-                "replicas_dev": dev.get("replicas", ""),
-
-                # QA
-                "cpu_limits_qa": qa.get("cpuLimits", ""),
-                "cpu_request_qa": qa.get("cpuRequest", ""),
-                "memory_limits_qa": qa.get("memoryLimits", ""),
-                "memory_request_qa": qa.get("memoryRequest", ""),
-                "replicas_qa": qa.get("replicas", "")
-            })
+print("CSV generado correctamente como 'microservices_config.csv'")
