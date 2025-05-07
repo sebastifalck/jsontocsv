@@ -9,15 +9,18 @@ with open('proyectos.json', 'r', encoding='utf-8') as f:
 rows = []
 
 # Procesar cada proyecto y microservicio
-for project in data['project']:
-    project_name = project['name']
-    for ms in project['ms']:
-        config = json.loads(ms['config'])  # Deserializar el string JSON de "config"
+for project in data.get('project', []):
+    project_name = project.get('name')
+    for ms in project.get('ms', []):
+        # Deserializar el string JSON de "config"
+        config_str = ms.get('config', '{}')
+        config = json.loads(config_str) if isinstance(config_str, str) else config_str
+
         row = {
             'project_name': project_name,
-            'repositoryUrl': ms['repositoryUrl'],
-            'buildConfigurationMode': ms['buildConfigurationMode'],
-            'tokenOcp': ms['tokenOcp'],
+            'repositoryUrl': ms.get('repositoryUrl'),
+            'buildConfigurationMode': ms.get('buildConfigurationMode'),
+            'tokenOcp': ms.get('tokenOcp'),
             'appName': config.get('appName'),
             'country': config.get('country'),
             'ocpLabel': config.get('ocpLabel'),
@@ -40,10 +43,13 @@ for project in data['project']:
             quotas['resQuotasmaster'] = quotas['resQuotasdev']
             quotas['resQuotasqa'] = quotas['resQuotasdev']
 
+        # Extraer valores por entorno
         for env, env_data in quotas.items():
             if env_data:
+                # Puede que sea lista o dict (adaptarse)
+                quota_item = env_data[0] if isinstance(env_data, list) else env_data
                 for key in ['cpuLimits', 'cpuRequest', 'memoryLimits', 'memoryRequest', 'replicas']:
-                    row[f'{env}_{key}'] = env_data[0].get(key)
+                    row[f'{env}_{key}'] = quota_item.get(key)
 
         rows.append(row)
 
