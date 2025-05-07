@@ -1,96 +1,90 @@
 import json
 import csv
 
-# Archivos
-input_file = 'Colombia-MICROSERVICES.json'
-output_file = 'output_microservices_full.csv'
-
-# Columnas del CSV
-fieldnames = [
-    'projectName', 'repositoryUrl', 'buildConfigurationMode', 'tokenOcp',
-    'appName', 'country', 'ocpLabel', 'projectInternal', 'baseImageVersion',
-    'secret', 'secretName',
-    'configMap', 'configMapName',
-    'volume', 'mountPath',
-    'environment', 'cpuLimits', 'cpuRequest', 'memoryLimits', 'memoryRequest', 'replicas'
-]
-
-rows = []
-
-# Cargar JSON
-with open(input_file, 'r', encoding='utf-8') as f:
+# Cargar el archivo JSON
+with open("proyectos.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Procesar proyectos
-for project in data.get('project', []):
-    if not project or not isinstance(project, dict):
-        continue  # Ignorar si está vacío
+# Campos para el CSV
+fieldnames = [
+    "project_name",
+    "app_name",
+    "country",
+    "ocp_label",
+    "project_folder",
+    "base_image_version",
+    "repository_url",
+    "token_ocp",
+    "build_configuration_mode",
 
-    project_name = project.get('name', '')
-    for ms in project.get('ms', []):
-        config_raw = ms.get('config', {})
-        config = config_raw if isinstance(config_raw, dict) else {}
+    "secrets",
+    "config_maps",
+    "volumes",
 
-        # Secretos
-        secret_data = config.get('secrets', [{}])[0] if config.get('secrets') else {}
-        secret = secret_data.get('secret', '')
-        secret_name = secret_data.get('secretName', '')
+    # Recursos MASTER
+    "cpu_limits_master", "cpu_request_master",
+    "memory_limits_master", "memory_request_master", "replicas_master",
 
-        # ConfigMaps
-        config_map_data = config.get('configMaps', [{}])[0] if config.get('configMaps') else {}
-        config_map = config_map_data.get('configMap', '')
-        config_map_name = config_map_data.get('configMapName', '')
+    # Recursos DEV
+    "cpu_limits_dev", "cpu_request_dev",
+    "memory_limits_dev", "memory_request_dev", "replicas_dev",
 
-        # Volúmenes
-        volume_data = config.get('volumes', [{}])[0] if config.get('volumes') else {}
-        volume = volume_data.get('volume', '')
-        mount_path = volume_data.get('mountPath', '')
+    # Recursos QA
+    "cpu_limits_qa", "cpu_request_qa",
+    "memory_limits_qa", "memory_request_qa", "replicas_qa"
+]
 
-        # Comunes
-        row_common = {
-            'projectName': project_name,
-            'repositoryUrl': ms.get('repositoryUrl', ''),
-            'buildConfigurationMode': ms.get('buildConfigurationMode', ''),
-            'tokenOcp': ms.get('tokenOcp', ''),
-            'appName': config.get('appName', ''),
-            'country': config.get('country', ''),
-            'ocpLabel': config.get('ocpLabel', ''),
-            'projectInternal': config.get('project', ''),
-            'baseImageVersion': config.get('baseImageVersion', ''),
-            'secret': secret,
-            'secretName': secret_name,
-            'configMap': config_map,
-            'configMapName': config_map_name,
-            'volume': volume,
-            'mountPath': mount_path
-        }
-
-        # Cuotas
-        quotas = {
-            'dev': config.get('resQuotasdev', {}),
-            'qa': config.get('resQuotasqa', config.get('resQuotasdev', {})),
-            'master': config.get('resQuotasmaster', config.get('resQuotasdev', {}))
-        }
-
-        for env, q in quotas.items():
-            q = q if isinstance(q, dict) else {}
-            row = row_common.copy()
-            row['environment'] = env
-            row['cpuLimits'] = q.get('cpuLimits', '')
-            row['cpuRequest'] = q.get('cpuRequest', '')
-            row['memoryLimits'] = q.get('memoryLimits', '')
-            row['memoryRequest'] = q.get('memoryRequest', '')
-            row['replicas'] = q.get('replicas', '')
-
-            # Depuración: imprime cada fila construida
-            print(json.dumps(row, indent=2, ensure_ascii=False))
-
-            rows.append(row)
-
-# Escribir a CSV
-with open(output_file, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.DictWriter(f, fieldnames=fieldnames)
+# Crear el archivo CSV
+with open("microservicios_completo.csv", "w", newline="", encoding="utf-8") as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
-    writer.writerows(rows)
 
-print(f"\n✅ CSV generado correctamente: {output_file}")
+    for project in data.get("project", []):
+        project_name = project.get("name", "")
+
+        for ms in project.get("ms", []):
+            config = ms.get("config", {})
+            dev = config.get("resQuotasdev", {})
+            master = config.get("resQuotasmaster", dev)
+            qa = config.get("resQuotasqa", dev)
+
+            secrets = ";".join([s.get("secretName") for s in config.get("secrets", []) if s.get("secret")])
+            config_maps = ";".join([cm.get("configMapName") for cm in config.get("configMaps", []) if cm.get("configMap")])
+            volumes = ";".join([v.get("mountPath") for v in config.get("volumes", []) if v.get("volume")])
+
+            writer.writerow({
+                "project_name": project_name,
+                "app_name": config.get("appName", ""),
+                "country": config.get("country", ""),
+                "ocp_label": config.get("ocpLabel", ""),
+                "project_folder": config.get("project", ""),
+                "base_image_version": config.get("baseImageVersion", ""),
+                "repository_url": ms.get("repositoryUrl", ""),
+                "token_ocp": ms.get("tokenOcp", ""),
+                "build_configuration_mode": ms.get("buildConfigurationMode", ""),
+
+                "secrets": secrets,
+                "config_maps": config_maps,
+                "volumes": volumes,
+
+                # MASTER
+                "cpu_limits_master": master.get("cpuLimits", ""),
+                "cpu_request_master": master.get("cpuRequest", ""),
+                "memory_limits_master": master.get("memoryLimits", ""),
+                "memory_request_master": master.get("memoryRequest", ""),
+                "replicas_master": master.get("replicas", ""),
+
+                # DEV
+                "cpu_limits_dev": dev.get("cpuLimits", ""),
+                "cpu_request_dev": dev.get("cpuRequest", ""),
+                "memory_limits_dev": dev.get("memoryLimits", ""),
+                "memory_request_dev": dev.get("memoryRequest", ""),
+                "replicas_dev": dev.get("replicas", ""),
+
+                # QA
+                "cpu_limits_qa": qa.get("cpuLimits", ""),
+                "cpu_request_qa": qa.get("cpuRequest", ""),
+                "memory_limits_qa": qa.get("memoryLimits", ""),
+                "memory_request_qa": qa.get("memoryRequest", ""),
+                "replicas_qa": qa.get("replicas", "")
+            })
