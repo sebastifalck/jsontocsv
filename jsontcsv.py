@@ -5,14 +5,11 @@ import csv
 with open('proyectos.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 
-# Lista para almacenar filas del CSV
 rows = []
 
-# Procesar cada proyecto y microservicio
 for project in data.get('project', []):
     project_name = project.get('name')
     for ms in project.get('ms', []):
-        # Deserializar el string JSON de "config"
         config_str = ms.get('config', '{}')
         config = json.loads(config_str) if isinstance(config_str, str) else config_str
 
@@ -27,39 +24,36 @@ for project in data.get('project', []):
             'project': config.get('project'),
             'baseImageVersion': config.get('baseImageVersion'),
             'secrets': ', '.join([s.get('secretName', '') for s in config.get('secrets', [])]),
+            'secrets_enabled': ', '.join([str(s.get('secret', '')) for s in config.get('secrets', [])]),
             'configMaps': ', '.join([c.get('configMapName', '') for c in config.get('configMaps', [])]),
+            'configMaps_enabled': ', '.join([str(c.get('configMap', '')) for c in config.get('configMaps', [])]),
             'volumes': ', '.join([v.get('mountPath', '') for v in config.get('volumes', [])]),
+            'volumes_enabled': ', '.join([str(v.get('volume', '')) for v in config.get('volumes', [])]),
         }
 
-        # Lógica para normalizar los entornos
         quotas = {
             'resQuotasdev': config.get('resQuotasdev'),
             'resQuotasmaster': config.get('resQuotasmaster'),
             'resQuotasqa': config.get('resQuotasqa')
         }
 
-        # Si solo tiene resQuotasdev, replicar para master y qa
         if quotas['resQuotasdev'] and not quotas['resQuotasmaster'] and not quotas['resQuotasqa']:
             quotas['resQuotasmaster'] = quotas['resQuotasdev']
             quotas['resQuotasqa'] = quotas['resQuotasdev']
 
-        # Extraer valores por entorno
         for env, env_data in quotas.items():
             if env_data:
-                # Puede que sea lista o dict (adaptarse)
                 quota_item = env_data[0] if isinstance(env_data, list) else env_data
                 for key in ['cpuLimits', 'cpuRequest', 'memoryLimits', 'memoryRequest', 'replicas']:
                     row[f'{env}_{key}'] = quota_item.get(key)
 
         rows.append(row)
 
-# Obtener encabezados unificados
 headers = sorted(set().union(*(r.keys() for r in rows)))
 
-# Escribir archivo CSV
 with open('microservices_config.csv', 'w', newline='', encoding='utf-8') as f:
     writer = csv.DictWriter(f, fieldnames=headers)
     writer.writeheader()
     writer.writerows(rows)
 
-print("CSV generado correctamente como 'microservices_config.csv'")
+print(\"CSV generado correctamente como 'microservices_config.csv'\")
