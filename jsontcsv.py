@@ -1,92 +1,82 @@
 import os
 import json
 import csv
+from pathlib import Path
 
-# Rutas de los archivos
-json_file = 'Chile-MICROSERVICES.json'
-token_file = 'token.json'
+# Carpeta donde están los JSONs
+json_folder = Path('.')
+token_file = Path('token.json')
 
 # Cargar tokens
-with open(token_file, encoding='utf-8') as f:
-    tokens = json.load(f)
-
-# Combinatoria de secretos/configmaps/volumes
-def combinatoria_id(secrets, configmap, volumes):
-    return 1 + (4 if secrets else 0) + (2 if configmap else 0) + (1 if volumes else 0)
-
-# Ambientes
-ambientes = ['dev', 'qa', 'prod']
+with open(token_file, 'r', encoding='utf-8') as f:
+    token_map = json.load(f)
 
 rows = []
 
-with open(json_file, encoding='utf-8') as f:
-    data = json.load(f)
+for filename in os.listdir(json_folder):
+    if filename.endswith('.json') and filename != token_file.name:
+        filepath = json_folder / filename
+        with open(filepath, 'r', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+            except Exception as e:
+                print(f"⚠️ Error al leer {filename}: {e}")
+                continue
 
-for project in data.get('projects', []):
-    project_name = project.get('name')
-    for ms in project.get('ms', []):
-        config = ms.get('config', {})
-        app_name = config.get('appName')
-        country = config.get('country')
-        ocp_label = config.get('ocpLabel')
-        base_image = config.get('baseImageVersion')
-        repo_url = ms.get('repositoryUrl')
-        token_key = ms.get('tokenOcp')
-        token_value = tokens.get(token_key, '') if token_key else ''
-        # Secretos/configmaps/volumes
-        secrets = any(x.get('secret', True) for x in config.get('secrets', []))
-        configmaps = any(x.get('configMap', True) for x in config.get('configMaps', []))
-        volumes = any(x.get('volume', True) for x in config.get('volumes', []))
-        combin_id = combinatoria_id(secrets, configmaps, volumes)
-        # resQuotas por ambiente
-        res_amb = {}
-        for amb in ambientes:
-            rq = config.get(f'resQuotas{amb}', None)
-            if rq:
-                res_amb[amb] = rq if isinstance(rq, dict) else rq[0]
-        # Si hay resQuotas general, usar para todos
-        if 'resQuotas' in config:
-            for amb in ambientes:
-                rq = config['resQuotas'][0] if isinstance(config['resQuotas'], list) else config['resQuotas']
-                res_amb[amb] = rq
-        # Si no hay resQuotas, poner None para todos
-        if not res_amb:
-            for amb in ambientes:
-                res_amb[amb] = None
-        # Fila por ambiente
-        for amb in ambientes:
-            rq = res_amb[amb]
-            row = {
-                'project_name': project_name,
-                'appName': app_name,
-                'country': country,
-                'ocpLabel': ocp_label,
-                'baseImageVersion': base_image,
-                'repositoryUrl': repo_url,
-                'token': token_value,
-                'ambiente': amb,
-                'secrets_enabled': secrets,
-                'configmap_enabled': configmaps,
-                'volumes_enabled': volumes,
-                'combinatoria_id': combin_id,
-            }
-            if rq:
-                row.update({
-                    'cpuLimits': rq.get('cpuLimits'),
-                    'cpuRequest': rq.get('cpuRequest'),
-                    'memoryLimits': rq.get('memoryLimits'),
-                    'memoryRequest': rq.get('memoryRequest'),
-                    'replicas': rq.get('replicas'),
-                })
-            rows.append(row)
+        for project in data.get('projects', []):
+            project_name = project.get('name')
+            for ms in project.get('ms', []):
+                config = ms.get('config', {})
+                token_name = ms.get('tokenOcp')
+                token_value = token_map.get(token_name, '')
 
-# Encabezados ordenados
-headers = [
-    'project_name', 'appName', 'country', 'ocpLabel', 'baseImageVersion', 'repositoryUrl',
-    'token', 'ambiente', 'secrets_enabled', 'configmap_enabled', 'volumes_enabled',
-    'combinatoria_id', 'cpuLimits', 'cpuRequest', 'memoryLimits', 'memoryRequest', 'replicas'
-]
+                quotas = {
+                    'dev': config.get('resQuotasdev'),
+                    'qa': config.get('resQuotasqa'),
+                    'master': config.get('resQuotasmaster'),
+                }
 
+                # Si solo hay uno, usarlo para todos los ambientes
+                if not quotas['dev'] and not quotas['qa'] and quotas['master']:
+                    quotas['dev'] = quotas['qa'] = quotas['master']
+                elif quotas['dev'] and not quotas['qa'] and not quotas['master']:
+                    quotas['qa'] = quotas['master'] = quotas['dev']
+
+                for env in ['dev', 'qa', 'master']:
+                    env_quota = quotas[env]
+                    if env_quota:
+                        quota_item = env_quota[0] if isinstance(env_quota, list) else env_quota
+                        row = {
+                            'source_file': filename,
+                            'project_name': project_name,
+                            'repositoryUrl': ms.get('repositoryUrl'),
+                            'buildConfigurationMode': ms.get('buildConfigurationMode'),
+                            'tokenOcp': token_name,
+                            'token': token_value,
+                            'env': env,
+                            'appName': config.get('appName'),
+                            'country': config.get('country'),
+                            'ocpLabel': config.get('ocpLabel'),
+                            'project': config.get('project'),
+                            'baseImageVersion': config.get('baseImageVersion'),
+                            'secrets': ', '.join([s.get('secretName', '') for s in config.get('secrets', [])]),
+                            'secrets_enabled': ', '.join([str(s.get('secret', '')) for s in config.get('secrets', [])]),
+                            'configMaps': ', '.join([c.get('configMapName', '') for c in config.get('configMaps', [])]),
+                            'configMaps_enabled': ', '.join([str(c.get('configMap', '')) for c in config.get('configMaps', [])]),
+                            'volumes': ', '.join([v.get('mountPath', '') for v in config.get('volumes', [])]),
+                            'volumes_enabled': ', '.join([str(v.get('volume', '')) for v in config.get('volumes', [])]),
+                            'cpuLimits': quota_item.get('cpuLimits'),
+                            'cpuRequest': quota_item.get('cpuRequest'),
+                            'memoryLimits': quota_item.get('memoryLimits'),
+                            'memoryRequest': quota_item.get('memoryRequest'),
+                            'replicas': quota_item.get('replicas'),
+                        }
+                        rows.append(row)
+
+# Obtener encabezados
+headers = sorted(set().union(*(r.keys() for r in rows)))
+
+# Exportar CSV final
 with open('microservices_config.csv', 'w', newline='', encoding='utf-8') as f:
     writer = csv.DictWriter(f, fieldnames=headers)
     writer.writeheader()
